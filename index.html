@@ -1,0 +1,601 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Nano Banana 轮廓控制图工具</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f4ef;
+      --panel: #ffffff;
+      --ink: #202124;
+      --muted: #676b73;
+      --line: #ded8cd;
+      --accent: #276ef1;
+      --accent-ink: #ffffff;
+      --soft: #ebe5da;
+      --danger: #b23b3b;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+    }
+
+    .app {
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: 340px minmax(0, 1fr);
+    }
+
+    aside {
+      border-right: 1px solid var(--line);
+      background: var(--panel);
+      padding: 20px;
+      overflow: auto;
+    }
+
+    main {
+      padding: 20px;
+      min-width: 0;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 22px;
+      font-weight: 650;
+      letter-spacing: 0;
+    }
+
+    p {
+      margin: 0 0 16px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .group {
+      border-top: 1px solid var(--line);
+      padding-top: 16px;
+      margin-top: 16px;
+    }
+
+    label {
+      display: block;
+      margin: 0 0 8px;
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 12px;
+      align-items: center;
+      margin: 14px 0;
+    }
+
+    .value {
+      min-width: 42px;
+      padding: 3px 7px;
+      border-radius: 6px;
+      background: var(--soft);
+      color: var(--ink);
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      font-size: 13px;
+    }
+
+    input[type="file"],
+    textarea,
+    button {
+      width: 100%;
+      font: inherit;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--accent);
+    }
+
+    input[type="file"] {
+      border: 1px dashed var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      background: #fbfaf7;
+    }
+
+    textarea {
+      min-height: 170px;
+      resize: vertical;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px;
+      color: var(--ink);
+      background: #fbfaf7;
+      line-height: 1.45;
+    }
+
+    button {
+      border: 0;
+      border-radius: 8px;
+      padding: 10px 12px;
+      background: var(--accent);
+      color: var(--accent-ink);
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    button.secondary {
+      background: var(--soft);
+      color: var(--ink);
+    }
+
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.48;
+    }
+
+    .actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .stage {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 16px;
+      align-items: start;
+    }
+
+    .preview {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 14px;
+      min-width: 0;
+    }
+
+    .preview h2 {
+      margin: 0 0 10px;
+      font-size: 15px;
+      font-weight: 650;
+    }
+
+    .canvas-wrap {
+      min-height: 420px;
+      display: grid;
+      place-items: center;
+      background:
+        linear-gradient(45deg, #eee 25%, transparent 25%),
+        linear-gradient(-45deg, #eee 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #eee 75%),
+        linear-gradient(-45deg, transparent 75%, #eee 75%);
+      background-size: 24px 24px;
+      background-position: 0 0, 0 12px, 12px -12px, -12px 0;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    canvas {
+      max-width: 100%;
+      max-height: 72vh;
+      display: block;
+      background: #fff;
+    }
+
+    .hint {
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+
+    .warn {
+      color: var(--danger);
+      font-size: 13px;
+      min-height: 18px;
+      margin-top: 8px;
+    }
+
+    .face-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    @media (max-width: 880px) {
+      .app {
+        grid-template-columns: 1fr;
+      }
+
+      aside {
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .stage {
+        grid-template-columns: 1fr;
+      }
+
+      .canvas-wrap {
+        min-height: 320px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside>
+      <h1>轮廓控制图工具</h1>
+      <p>把真人参考图转成适合 Nano Banana 使用的线条控制图。图片只在浏览器本地处理，不会上传。</p>
+
+      <label for="file">上传参考图</label>
+      <input id="file" type="file" accept="image/*">
+      <div id="message" class="warn"></div>
+
+      <div class="group">
+        <div class="row">
+          <label for="blur">模糊降噪</label>
+          <span id="blurValue" class="value">1.4</span>
+        </div>
+        <input id="blur" type="range" min="0" max="4" step="0.1" value="1.4">
+
+        <div class="row">
+          <label for="threshold">轮廓强度</label>
+          <span id="thresholdValue" class="value">42</span>
+        </div>
+        <input id="threshold" type="range" min="10" max="120" step="1" value="42">
+
+        <div class="row">
+          <label for="softness">浅线保留</label>
+          <span id="softnessValue" class="value">56</span>
+        </div>
+        <input id="softness" type="range" min="0" max="100" step="1" value="56">
+
+        <div class="row">
+          <label for="thicken">线条加粗</label>
+          <span id="thickenValue" class="value">1</span>
+        </div>
+        <input id="thicken" type="range" min="0" max="3" step="1" value="1">
+      </div>
+
+      <div class="group">
+        <label>
+          <input id="muteFace" type="checkbox" checked>
+          弱化脸部细节
+        </label>
+        <p class="hint">打开后会用一个浅色椭圆遮掉脸部内部线条，只保留头部朝向，减少模型复制原脸。</p>
+
+        <div class="face-grid">
+          <div>
+            <div class="row">
+              <label for="faceX">脸部 X</label>
+              <span id="faceXValue" class="value">50</span>
+            </div>
+            <input id="faceX" type="range" min="0" max="100" step="1" value="50">
+          </div>
+          <div>
+            <div class="row">
+              <label for="faceY">脸部 Y</label>
+              <span id="faceYValue" class="value">23</span>
+            </div>
+            <input id="faceY" type="range" min="0" max="100" step="1" value="23">
+          </div>
+          <div>
+            <div class="row">
+              <label for="faceW">脸宽</label>
+              <span id="faceWValue" class="value">24</span>
+            </div>
+            <input id="faceW" type="range" min="4" max="60" step="1" value="24">
+          </div>
+          <div>
+            <div class="row">
+              <label for="faceH">脸高</label>
+              <span id="faceHValue" class="value">17</span>
+            </div>
+            <input id="faceH" type="range" min="4" max="60" step="1" value="17">
+          </div>
+        </div>
+      </div>
+
+      <div class="group">
+        <div class="actions">
+          <button id="download" disabled>下载 PNG</button>
+          <button id="copyPrompt" class="secondary">复制提示词</button>
+        </div>
+      </div>
+
+      <div class="group">
+        <label for="prompt">配套提示词</label>
+        <textarea id="prompt">参考图只作为线条控制图使用，只控制人物姿势、身体轮廓、坐姿、手部位置、镜头角度、场景结构和空间关系。不要参考线条图中的脸部五官，不要复制原人物头部；人物头部、脸型、五官和发型以文字提示或另一张人物参考图为准。控制图只锁定姿势和场景，不锁定身份。不要生成畸形头部，不要扭曲五官，不要把脸做成原图人物。</textarea>
+      </div>
+    </aside>
+
+    <main>
+      <div class="stage">
+        <section class="preview">
+          <h2>原图</h2>
+          <div class="canvas-wrap">
+            <canvas id="sourceCanvas" width="402" height="720"></canvas>
+          </div>
+        </section>
+
+        <section class="preview">
+          <h2>线条控制图</h2>
+          <div class="canvas-wrap">
+            <canvas id="outputCanvas" width="402" height="720"></canvas>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    const els = {
+      file: document.getElementById('file'),
+      message: document.getElementById('message'),
+      source: document.getElementById('sourceCanvas'),
+      output: document.getElementById('outputCanvas'),
+      blur: document.getElementById('blur'),
+      threshold: document.getElementById('threshold'),
+      softness: document.getElementById('softness'),
+      thicken: document.getElementById('thicken'),
+      muteFace: document.getElementById('muteFace'),
+      faceX: document.getElementById('faceX'),
+      faceY: document.getElementById('faceY'),
+      faceW: document.getElementById('faceW'),
+      faceH: document.getElementById('faceH'),
+      download: document.getElementById('download'),
+      copyPrompt: document.getElementById('copyPrompt'),
+      prompt: document.getElementById('prompt')
+    };
+
+    const valueIds = ['blur', 'threshold', 'softness', 'thicken', 'faceX', 'faceY', 'faceW', 'faceH'];
+    let currentImage = null;
+
+    function updateValues() {
+      valueIds.forEach((id) => {
+        document.getElementById(`${id}Value`).textContent = els[id].value;
+      });
+    }
+
+    function setCanvasSize(width, height) {
+      els.source.width = width;
+      els.source.height = height;
+      els.output.width = width;
+      els.output.height = height;
+    }
+
+    function drawImageCoverless(canvas, img) {
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    }
+
+    function clamp(v, min, max) {
+      return Math.max(min, Math.min(max, v));
+    }
+
+    function grayscale(data) {
+      const out = new Float32Array(data.width * data.height);
+      const src = data.data;
+      for (let i = 0, j = 0; i < src.length; i += 4, j += 1) {
+        out[j] = 0.299 * src[i] + 0.587 * src[i + 1] + 0.114 * src[i + 2];
+      }
+      return out;
+    }
+
+    function boxBlur(src, width, height, radius) {
+      const r = Math.round(radius);
+      if (r <= 0) return src.slice();
+      const tmp = new Float32Array(src.length);
+      const out = new Float32Array(src.length);
+      for (let y = 0; y < height; y += 1) {
+        for (let x = 0; x < width; x += 1) {
+          let sum = 0;
+          let count = 0;
+          for (let dx = -r; dx <= r; dx += 1) {
+            const xx = clamp(x + dx, 0, width - 1);
+            sum += src[y * width + xx];
+            count += 1;
+          }
+          tmp[y * width + x] = sum / count;
+        }
+      }
+      for (let y = 0; y < height; y += 1) {
+        for (let x = 0; x < width; x += 1) {
+          let sum = 0;
+          let count = 0;
+          for (let dy = -r; dy <= r; dy += 1) {
+            const yy = clamp(y + dy, 0, height - 1);
+            sum += tmp[yy * width + x];
+            count += 1;
+          }
+          out[y * width + x] = sum / count;
+        }
+      }
+      return out;
+    }
+
+    function sobel(src, width, height) {
+      const out = new Float32Array(src.length);
+      let max = 0;
+      for (let y = 0; y < height; y += 1) {
+        for (let x = 0; x < width; x += 1) {
+          const xm = clamp(x - 1, 0, width - 1);
+          const xp = clamp(x + 1, 0, width - 1);
+          const ym = clamp(y - 1, 0, height - 1);
+          const yp = clamp(y + 1, 0, height - 1);
+          const a = src[ym * width + xm];
+          const b = src[ym * width + x];
+          const c = src[ym * width + xp];
+          const d = src[y * width + xm];
+          const f = src[y * width + xp];
+          const g = src[yp * width + xm];
+          const h = src[yp * width + x];
+          const i = src[yp * width + xp];
+          const gx = -a + c - 2 * d + 2 * f - g + i;
+          const gy = -a - 2 * b - c + g + 2 * h + i;
+          const mag = Math.sqrt(gx * gx + gy * gy);
+          out[y * width + x] = mag;
+          if (mag > max) max = mag;
+        }
+      }
+      if (max > 0) {
+        for (let idx = 0; idx < out.length; idx += 1) out[idx] = (out[idx] / max) * 255;
+      }
+      return out;
+    }
+
+    function thickenLines(src, width, height, amount) {
+      if (amount <= 0) return src;
+      let current = src;
+      for (let pass = 0; pass < amount; pass += 1) {
+        const out = current.slice();
+        for (let y = 0; y < height; y += 1) {
+          for (let x = 0; x < width; x += 1) {
+            const idx = y * width + x;
+            if (current[idx] < 240) continue;
+            let darkest = current[idx];
+            for (let dy = -1; dy <= 1; dy += 1) {
+              for (let dx = -1; dx <= 1; dx += 1) {
+                const xx = clamp(x + dx, 0, width - 1);
+                const yy = clamp(y + dy, 0, height - 1);
+                darkest = Math.min(darkest, current[yy * width + xx]);
+              }
+            }
+            out[idx] = darkest;
+          }
+        }
+        current = out;
+      }
+      return current;
+    }
+
+    function process() {
+      updateValues();
+      if (!currentImage) return;
+
+      drawImageCoverless(els.source, currentImage);
+      const width = els.source.width;
+      const height = els.source.height;
+      const sourceCtx = els.source.getContext('2d');
+      const outputCtx = els.output.getContext('2d');
+      const imgData = sourceCtx.getImageData(0, 0, width, height);
+      const gray = grayscale(imgData);
+      const blurred = boxBlur(gray, width, height, Number(els.blur.value));
+      const edges = sobel(blurred, width, height);
+      const threshold = Number(els.threshold.value);
+      const softness = Number(els.softness.value);
+      let line = new Uint8ClampedArray(width * height);
+
+      for (let i = 0; i < edges.length; i += 1) {
+        const edge = edges[i];
+        if (edge >= threshold) {
+          const ink = Math.max(0, 95 - (edge - threshold) * 1.6);
+          line[i] = ink;
+        } else if (softness > 0 && edge >= threshold * 0.55) {
+          const t = (edge - threshold * 0.55) / (threshold * 0.45);
+          line[i] = 255 - t * softness;
+        } else {
+          line[i] = 255;
+        }
+      }
+
+      line = thickenLines(line, width, height, Number(els.thicken.value));
+
+      const out = outputCtx.createImageData(width, height);
+      for (let i = 0, j = 0; i < line.length; i += 1, j += 4) {
+        out.data[j] = line[i];
+        out.data[j + 1] = line[i];
+        out.data[j + 2] = line[i];
+        out.data[j + 3] = 255;
+      }
+      outputCtx.putImageData(out, 0, 0);
+
+      if (els.muteFace.checked) {
+        const x = Number(els.faceX.value) / 100 * width;
+        const y = Number(els.faceY.value) / 100 * height;
+        const rx = Number(els.faceW.value) / 200 * width;
+        const ry = Number(els.faceH.value) / 200 * height;
+        outputCtx.save();
+        outputCtx.fillStyle = '#ffffff';
+        outputCtx.strokeStyle = '#9c9c9c';
+        outputCtx.lineWidth = Math.max(2, Math.round(width / 240));
+        outputCtx.beginPath();
+        outputCtx.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2);
+        outputCtx.fill();
+        outputCtx.stroke();
+        outputCtx.strokeStyle = '#b8b8b8';
+        outputCtx.lineWidth = 1;
+        outputCtx.beginPath();
+        outputCtx.moveTo(x, y - ry * 0.45);
+        outputCtx.lineTo(x + rx * 0.08, y + ry * 0.45);
+        outputCtx.stroke();
+        outputCtx.restore();
+      }
+    }
+
+    els.file.addEventListener('change', () => {
+      const file = els.file.files[0];
+      if (!file) return;
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        const maxSide = 1600;
+        let width = img.naturalWidth;
+        let height = img.naturalHeight;
+        const scale = Math.min(1, maxSide / Math.max(width, height));
+        width = Math.max(1, Math.round(width * scale));
+        height = Math.max(1, Math.round(height * scale));
+        setCanvasSize(width, height);
+        currentImage = img;
+        els.download.disabled = false;
+        els.message.textContent = '';
+        process();
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        els.message.textContent = '图片读取失败，请换一张图。';
+      };
+      img.src = url;
+    });
+
+    [...valueIds.map((id) => els[id]), els.muteFace].forEach((el) => {
+      el.addEventListener('input', process);
+      el.addEventListener('change', process);
+    });
+
+    els.download.addEventListener('click', () => {
+      const link = document.createElement('a');
+      link.download = 'nano-banana-contour-control.png';
+      link.href = els.output.toDataURL('image/png');
+      link.click();
+    });
+
+    els.copyPrompt.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(els.prompt.value);
+        els.message.textContent = '提示词已复制。';
+        setTimeout(() => {
+          if (els.message.textContent === '提示词已复制。') els.message.textContent = '';
+        }, 1400);
+      } catch (error) {
+        els.prompt.select();
+        els.message.textContent = '复制失败，请手动复制文本框内容。';
+      }
+    });
+
+    updateValues();
+  </script>
+</body>
+</html>

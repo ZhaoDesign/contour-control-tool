@@ -211,6 +211,53 @@
       gap: 10px;
     }
 
+    .face-list {
+      display: grid;
+      gap: 12px;
+      margin-top: 12px;
+    }
+
+    .face-card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      background: #fbfaf7;
+    }
+
+    .face-head {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .face-title {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      margin: 0;
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .face-title input {
+      width: auto;
+    }
+
+    .small-button {
+      width: auto;
+      padding: 6px 8px;
+      font-size: 13px;
+    }
+
+    .face-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 12px;
+    }
+
     @media (max-width: 880px) {
       .app {
         grid-template-columns: 1fr;
@@ -270,39 +317,15 @@
       <div class="group">
         <label>
           <input id="muteFace" type="checkbox" checked>
-          弱化脸部细节
+          开启脸部弱化
         </label>
-        <p class="hint">打开后会用一个浅色椭圆遮掉脸部内部线条，只保留头部朝向，减少模型复制原脸。</p>
+        <p class="hint">多人图可以添加多个脸部区域。总开关关闭时全部不生效；每个人也可以单独开关。</p>
 
-        <div class="face-grid">
-          <div>
-            <div class="row">
-              <label for="faceX">脸部 X</label>
-              <span id="faceXValue" class="value">50</span>
-            </div>
-            <input id="faceX" type="range" min="0" max="100" step="1" value="50">
-          </div>
-          <div>
-            <div class="row">
-              <label for="faceY">脸部 Y</label>
-              <span id="faceYValue" class="value">23</span>
-            </div>
-            <input id="faceY" type="range" min="0" max="100" step="1" value="23">
-          </div>
-          <div>
-            <div class="row">
-              <label for="faceW">脸宽</label>
-              <span id="faceWValue" class="value">24</span>
-            </div>
-            <input id="faceW" type="range" min="4" max="60" step="1" value="24">
-          </div>
-          <div>
-            <div class="row">
-              <label for="faceH">脸高</label>
-              <span id="faceHValue" class="value">17</span>
-            </div>
-            <input id="faceH" type="range" min="4" max="60" step="1" value="17">
-          </div>
+        <div id="faceList" class="face-list"></div>
+
+        <div class="face-actions">
+          <button id="addFace" type="button" class="secondary">添加人物</button>
+          <button id="resetFaces" type="button" class="secondary">重置区域</button>
         </div>
       </div>
 
@@ -315,7 +338,7 @@
 
       <div class="group">
         <label for="prompt">配套提示词</label>
-        <textarea id="prompt">参考图只作为线条控制图使用，只控制人物姿势、身体轮廓、坐姿、手部位置、镜头角度、场景结构和空间关系。不要参考线条图中的脸部五官，不要复制原人物头部；人物头部、脸型、五官和发型以文字提示或另一张人物参考图为准。控制图只锁定姿势和场景，不锁定身份。不要生成畸形头部，不要扭曲五官，不要把脸做成原图人物。</textarea>
+        <textarea id="prompt">参考图只作为线条控制图使用，只控制人物姿势、身体轮廓、坐姿、手部位置、镜头角度、场景结构和空间关系。多人画面中，每个人的脸部都只以文字提示或对应人物参考图为准，不要复制线条控制图中的原脸。控制图只锁定姿势和场景，不锁定身份。不要生成畸形头部，不要扭曲五官，不要把脸做成原图人物。若某个人脸部弱化未开启，则该人物脸部线条可能会被模型当作身份参考，需要根据目标决定是否开启。</textarea>
       </div>
     </aside>
 
@@ -349,22 +372,84 @@
       softness: document.getElementById('softness'),
       thicken: document.getElementById('thicken'),
       muteFace: document.getElementById('muteFace'),
-      faceX: document.getElementById('faceX'),
-      faceY: document.getElementById('faceY'),
-      faceW: document.getElementById('faceW'),
-      faceH: document.getElementById('faceH'),
+      faceList: document.getElementById('faceList'),
+      addFace: document.getElementById('addFace'),
+      resetFaces: document.getElementById('resetFaces'),
       download: document.getElementById('download'),
       copyPrompt: document.getElementById('copyPrompt'),
       prompt: document.getElementById('prompt')
     };
 
-    const valueIds = ['blur', 'threshold', 'softness', 'thicken', 'faceX', 'faceY', 'faceW', 'faceH'];
+    const valueIds = ['blur', 'threshold', 'softness', 'thicken'];
+    const maxFaces = 8;
     let currentImage = null;
+    let faceIdSeed = 1;
+    let faces = [createFace(1, 50, 23, 24, 17, true)];
 
     function updateValues() {
       valueIds.forEach((id) => {
         document.getElementById(`${id}Value`).textContent = els[id].value;
       });
+    }
+
+    function createFace(id, x, y, w, h, enabled) {
+      return { id, x, y, w, h, enabled };
+    }
+
+    function nextFaceDefaults(index) {
+      const presets = [
+        [50, 23, 24, 17],
+        [35, 26, 22, 16],
+        [65, 26, 22, 16],
+        [25, 30, 20, 15],
+        [75, 30, 20, 15],
+        [50, 38, 22, 16],
+        [35, 42, 20, 15],
+        [65, 42, 20, 15]
+      ];
+      return presets[index % presets.length];
+    }
+
+    function renderFaces() {
+      els.faceList.innerHTML = '';
+      faces.forEach((face, index) => {
+        const card = document.createElement('div');
+        card.className = 'face-card';
+        card.dataset.faceId = face.id;
+        card.innerHTML = `
+          <div class="face-head">
+            <label class="face-title">
+              <input type="checkbox" data-field="enabled" ${face.enabled ? 'checked' : ''}>
+              人物 ${index + 1}
+            </label>
+            <button type="button" class="secondary small-button" data-action="remove" ${faces.length === 1 ? 'disabled' : ''}>删除</button>
+          </div>
+          <div class="face-grid">
+            ${rangeControl('x', '脸部 X', face.x)}
+            ${rangeControl('y', '脸部 Y', face.y)}
+            ${rangeControl('w', '脸宽', face.w, 4, 60)}
+            ${rangeControl('h', '脸高', face.h, 4, 60)}
+          </div>
+        `;
+        els.faceList.appendChild(card);
+      });
+      els.addFace.disabled = faces.length >= maxFaces;
+    }
+
+    function rangeControl(field, label, value, min = 0, max = 100) {
+      return `
+        <div>
+          <div class="row">
+            <label>${label}</label>
+            <span class="value" data-value-for="${field}">${value}</span>
+          </div>
+          <input type="range" min="${min}" max="${max}" step="1" value="${value}" data-field="${field}">
+        </div>
+      `;
+    }
+
+    function getFaceById(id) {
+      return faces.find((face) => face.id === id);
     }
 
     function setCanvasSize(width, height) {
@@ -522,25 +607,27 @@
       outputCtx.putImageData(out, 0, 0);
 
       if (els.muteFace.checked) {
-        const x = Number(els.faceX.value) / 100 * width;
-        const y = Number(els.faceY.value) / 100 * height;
-        const rx = Number(els.faceW.value) / 200 * width;
-        const ry = Number(els.faceH.value) / 200 * height;
-        outputCtx.save();
-        outputCtx.fillStyle = '#ffffff';
-        outputCtx.strokeStyle = '#9c9c9c';
-        outputCtx.lineWidth = Math.max(2, Math.round(width / 240));
-        outputCtx.beginPath();
-        outputCtx.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2);
-        outputCtx.fill();
-        outputCtx.stroke();
-        outputCtx.strokeStyle = '#b8b8b8';
-        outputCtx.lineWidth = 1;
-        outputCtx.beginPath();
-        outputCtx.moveTo(x, y - ry * 0.45);
-        outputCtx.lineTo(x + rx * 0.08, y + ry * 0.45);
-        outputCtx.stroke();
-        outputCtx.restore();
+        faces.filter((face) => face.enabled).forEach((face) => {
+          const x = face.x / 100 * width;
+          const y = face.y / 100 * height;
+          const rx = face.w / 200 * width;
+          const ry = face.h / 200 * height;
+          outputCtx.save();
+          outputCtx.fillStyle = '#ffffff';
+          outputCtx.strokeStyle = '#9c9c9c';
+          outputCtx.lineWidth = Math.max(2, Math.round(width / 240));
+          outputCtx.beginPath();
+          outputCtx.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2);
+          outputCtx.fill();
+          outputCtx.stroke();
+          outputCtx.strokeStyle = '#b8b8b8';
+          outputCtx.lineWidth = 1;
+          outputCtx.beginPath();
+          outputCtx.moveTo(x, y - ry * 0.45);
+          outputCtx.lineTo(x + rx * 0.08, y + ry * 0.45);
+          outputCtx.stroke();
+          outputCtx.restore();
+        });
       }
     }
 
@@ -575,6 +662,52 @@
       el.addEventListener('change', process);
     });
 
+    els.faceList.addEventListener('input', (event) => {
+      const card = event.target.closest('.face-card');
+      if (!card) return;
+      const face = getFaceById(Number(card.dataset.faceId));
+      if (!face) return;
+      const field = event.target.dataset.field;
+      if (!field) return;
+      if (field === 'enabled') {
+        face.enabled = event.target.checked;
+      } else {
+        face[field] = Number(event.target.value);
+        const value = card.querySelector(`[data-value-for="${field}"]`);
+        if (value) value.textContent = event.target.value;
+      }
+      process();
+    });
+
+    els.faceList.addEventListener('change', (event) => {
+      if (event.target.dataset.field === 'enabled') process();
+    });
+
+    els.faceList.addEventListener('click', (event) => {
+      const button = event.target.closest('button[data-action="remove"]');
+      if (!button || faces.length === 1) return;
+      const card = button.closest('.face-card');
+      faces = faces.filter((face) => face.id !== Number(card.dataset.faceId));
+      renderFaces();
+      process();
+    });
+
+    els.addFace.addEventListener('click', () => {
+      if (faces.length >= maxFaces) return;
+      faceIdSeed += 1;
+      const [x, y, w, h] = nextFaceDefaults(faces.length);
+      faces.push(createFace(faceIdSeed, x, y, w, h, true));
+      renderFaces();
+      process();
+    });
+
+    els.resetFaces.addEventListener('click', () => {
+      faceIdSeed = 1;
+      faces = [createFace(1, 50, 23, 24, 17, true)];
+      renderFaces();
+      process();
+    });
+
     els.download.addEventListener('click', () => {
       const link = document.createElement('a');
       link.download = 'nano-banana-contour-control.png';
@@ -595,6 +728,7 @@
       }
     });
 
+    renderFaces();
     updateValues();
   </script>
 </body>

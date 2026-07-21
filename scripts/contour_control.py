@@ -25,6 +25,14 @@ def parse_face_size(raw: str) -> tuple[float, float]:
         raise argparse.ArgumentTypeError("use width,height percent format, for example 24,17") from exc
 
 
+def parse_face_region(raw: str) -> tuple[float, float, float, float]:
+    try:
+        x, y, w, h = raw.split(",", 3)
+        return float(x), float(y), float(w), float(h)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("use x,y,width,height percent format, for example 50,23,24,17") from exc
+
+
 def sobel_edges(gray: Image.Image) -> tuple[list[float], int, int]:
     width, height = gray.size
     try:
@@ -88,8 +96,7 @@ def make_control_image(
     softness: float,
     thicken: int,
     mute_face: bool,
-    face_center: tuple[float, float],
-    face_size: tuple[float, float],
+    face_regions: list[tuple[float, float, float, float]],
     max_side: int,
 ) -> None:
     img = Image.open(source).convert("RGB")
@@ -123,14 +130,15 @@ def make_control_image(
     if mute_face:
         draw = ImageDraw.Draw(result)
         width, height = result.size
-        cx = face_center[0] / 100.0 * width
-        cy = face_center[1] / 100.0 * height
-        rx = face_size[0] / 200.0 * width
-        ry = face_size[1] / 200.0 * height
-        box = (cx - rx, cy - ry, cx + rx, cy + ry)
         stroke = max(2, round(width / 240))
-        draw.ellipse(box, fill=(255, 255, 255), outline=(156, 156, 156), width=stroke)
-        draw.line((cx, cy - ry * 0.45, cx + rx * 0.08, cy + ry * 0.45), fill=(184, 184, 184), width=1)
+        for face in face_regions:
+            cx = face[0] / 100.0 * width
+            cy = face[1] / 100.0 * height
+            rx = face[2] / 200.0 * width
+            ry = face[3] / 200.0 * height
+            box = (cx - rx, cy - ry, cx + rx, cy + ry)
+            draw.ellipse(box, fill=(255, 255, 255), outline=(156, 156, 156), width=stroke)
+            draw.line((cx, cy - ry * 0.45, cx + rx * 0.08, cy + ry * 0.45), fill=(184, 184, 184), width=1)
 
     output.parent.mkdir(parents=True, exist_ok=True)
     result.save(output)
@@ -144,11 +152,21 @@ def main() -> None:
     parser.add_argument("--threshold", type=float, default=42.0, help="edge threshold, default: 42")
     parser.add_argument("--softness", type=float, default=56.0, help="light gray edge retention, default: 56")
     parser.add_argument("--thicken", type=int, default=1, choices=range(0, 4), help="line thickening passes, 0-3")
-    parser.add_argument("--no-face-mute", action="store_true", help="do not blank out the face area")
-    parser.add_argument("--face-center", type=parse_percent_pair, default=(50.0, 23.0), help="face center as x,y percent")
-    parser.add_argument("--face-size", type=parse_face_size, default=(24.0, 17.0), help="face ellipse size as width,height percent")
+    parser.add_argument("--face-off", action="store_true", help="disable all face muting")
+    parser.add_argument("--no-face-mute", action="store_true", help="same as --face-off")
+    parser.add_argument(
+        "--face",
+        type=parse_face_region,
+        action="append",
+        default=[],
+        help="face mute region as x,y,width,height percent; repeat for multiple people",
+    )
+    parser.add_argument("--face-center", type=parse_percent_pair, default=(50.0, 23.0), help="legacy single-face center as x,y percent")
+    parser.add_argument("--face-size", type=parse_face_size, default=(24.0, 17.0), help="legacy single-face size as width,height percent")
     parser.add_argument("--max-side", type=int, default=1600, help="resize long side before processing, 0 keeps original size")
     args = parser.parse_args()
+
+    face_regions = args.face or [(args.face_center[0], args.face_center[1], args.face_size[0], args.face_size[1])]
 
     make_control_image(
         source=args.input,
@@ -157,9 +175,8 @@ def main() -> None:
         threshold=args.threshold,
         softness=args.softness,
         thicken=args.thicken,
-        mute_face=not args.no_face_mute,
-        face_center=args.face_center,
-        face_size=args.face_size,
+        mute_face=not (args.no_face_mute or args.face_off),
+        face_regions=face_regions,
         max_side=args.max_side,
     )
 
